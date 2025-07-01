@@ -68,13 +68,18 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
+        ## STORES FOR GRAD-CAM ##
+        self.last_attn = None  # store for later
+
+
     def forward(self, x):
         b, n, _, h = *x.shape, self.heads  # batch, tokens, dim, num_heads
         qkv = self.to_qkv(x).chunk(3, dim = -1)  # Split Q, K, V
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)  # Reshape for multi-heads
 
         dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale  # QK^T
-        attn = self.attend(dots)  # Apply softmax
+        attn = self.attend(dots)
+        self.last_attn = attn 
 
         out = einsum('b h i j, b h j d -> b h i d', attn, v)  # Weighted sum of values
         out = rearrange(out, 'b h n d -> b n (h d)')  # Recombine heads
@@ -147,4 +152,5 @@ class VITClassifier(nn.Module):
         x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
 
         x = self.to_latent(x)  # Optional extra projection
+
         return self.mlp_head(x)  # Final classification
